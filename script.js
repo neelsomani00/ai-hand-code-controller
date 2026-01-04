@@ -1,120 +1,152 @@
-// --- 1. THREE.JS SCENE SETUP ---
+// --- 1. CORE 3D SCENE & ENGINE ---
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.getElementById('canvas-container').appendChild(renderer.domElement);
 
-// Add Lighting
-const light = new THREE.PointLight(0xffffff, 1, 100);
+const light = new THREE.PointLight(0xffffff, 1.5, 100);
 light.position.set(0, 10, 10);
 scene.add(light);
 scene.add(new THREE.AmbientLight(0x404040));
-camera.position.z = 8;
+camera.position.z = 10;
 
-// --- 2. THE OBJECTS (Stuff to pick up) ---
-const shapes = [];
-const shapeGeometries = [new THREE.BoxGeometry(1, 1, 1), new THREE.SphereGeometry(0.7, 32, 32), new THREE.TorusGeometry(0.5, 0.2, 16, 100)];
+// --- 2. THE OBJECTS (Pick-up & Explode) ---
+let shapes = [];
+const geometries = [new THREE.BoxGeometry(1.2, 1.2, 1.2), new THREE.SphereGeometry(0.8, 32, 32), new THREE.TorusGeometry(0.6, 0.3, 16, 100)];
 const colors = [0xff0055, 0x00f3ff, 0xffaa00];
 
-for(let i = 0; i < 3; i++) {
-    const mesh = new THREE.Mesh(shapeGeometries[i], new THREE.MeshStandardMaterial({ color: colors[i] }));
-    mesh.position.set((i - 1) * 3, 0, 0);
-    scene.add(mesh);
-    shapes.push(mesh);
+function spawnShapes() {
+    shapes.forEach(s => scene.remove(s));
+    shapes = [];
+    for(let i = 0; i < 3; i++) {
+        const mesh = new THREE.Mesh(geometries[i], new THREE.MeshStandardMaterial({ color: colors[i], wireframe: false }));
+        mesh.position.set((i - 1) * 4, 0, 0);
+        scene.add(mesh);
+        shapes.push(mesh);
+    }
 }
+spawnShapes();
 
-// --- 3. THE SKELETON HANDS ---
-function createSkeletonHand() {
+// --- 3. DIGITAL SKELETON HANDS ---
+function createSkeleton() {
     const group = new THREE.Group();
-    const material = new THREE.MeshBasicMaterial({ color: 0x00f3ff });
-    const points = [];
+    const dots = [];
+    const mat = new THREE.MeshBasicMaterial({ color: 0x00f3ff });
     for(let i = 0; i < 21; i++) {
-        const p = new THREE.Mesh(new THREE.SphereGeometry(0.1), material);
-        group.add(p);
-        points.push(p);
+        const dot = new THREE.Mesh(new THREE.SphereGeometry(0.12), mat);
+        group.add(dot);
+        dots.push(dot);
     }
     scene.add(group);
-    return { group, points };
+    return { group, dots };
 }
 
-const hand1 = createSkeletonHand();
-const hand2 = createSkeletonHand();
-let grabbedObject = [null, null]; // Track what each hand is holding
+const leftHand = createSkeleton();
+const rightHand = createSkeleton();
+let grabbed = [null, null];
 
-// --- 4. FIRE EFFECT (Pinch) ---
-const fireParticles = new THREE.Points(
-    new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(300), 3)),
-    new THREE.PointsMaterial({ color: 0xff4400, size: 0.1, transparent: true })
-);
-scene.add(fireParticles);
+// --- 4. THE POWERFUL NATIVE CAMERA FIX ---
+const videoElement = document.querySelector('.input_video');
+const canvasElement = document.querySelector('.output_canvas');
+const canvasCtx = canvasElement.getContext('2d');
 
-// --- 5. AI TRACKING & GESTURES ---
-function onResults(results) {
-    const canvas = document.querySelector('.output_canvas');
-    const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Reset Hand Visibility
-    hand1.group.visible = false;
-    hand2.group.visible = false;
+async function startCamera() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+        videoElement.srcObject = stream;
+        videoElement.play();
+        
+        videoElement.onloadedmetadata = () => {
+            sendToMediaPipe();
+        };
+    } catch (err) {
+        console.error("Camera Access Denied:", err);
+        document.getElementById('gesture-name').innerText = "CAMERA_ERROR: ALLOW PERMISSION";
+    }
+}
+
+// --- 5. MEDIAPIPE LOGIC ---
+const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
+
+hands.onResults((results) => {
+    canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+    canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+    leftHand.group.visible = false;
+    rightHand.group.visible = false;
 
     if (results.multiHandLandmarks) {
         results.multiHandLandmarks.forEach((landmarks, index) => {
-            const h = index === 0 ? hand1 : hand2;
+            const h = index === 0 ? rightHand : leftHand; // Correct mapping
             h.group.visible = true;
 
-            // Update Hand Point Positions
             landmarks.forEach((lm, i) => {
-                const x = ((1 - lm.x) - 0.5) * 18;
-                const y = (-(lm.y - 0.5)) * 12;
-                h.points[i].position.set(x, y, -lm.z * 10);
+                const x = ((1 - lm.x) - 0.5) * 22; // Wider map for desktop/mobile
+                const y = (-(lm.y - 0.5)) * 14;
+                h.dots[i].position.set(x, y, -lm.z * 15);
             });
 
-            const wrist = h.points[0].position;
-            const indexTip = h.points[8].position;
-            const thumbTip = h.points[4].position;
+            // HAND LOGIC
+            const indexTip = h.dots[8].position;
+            const thumbTip = h.dots[4].position;
+            const wrist = h.dots[0].position;
 
-            // GESTURE 1: PINCH (FIRE BLAST)
             const pinchDist = indexTip.distanceTo(thumbTip);
-            if(pinchDist < 0.5) {
-                h.points.forEach(p => p.material.color.setHex(0xff4400));
-                // Move fire particles to index tip
-                fireParticles.position.copy(indexTip);
-            } else {
-                h.points.forEach(p => p.material.color.setHex(0x00f3ff));
-            }
+            const isFist = indexTip.distanceTo(wrist) < 2.0;
 
-            // GESTURE 2: FIST / GRAB
-            const isFist = indexTip.distanceTo(wrist) < 1.5;
-            if(isFist) {
-                shapes.forEach(shape => {
-                    if(shape.position.distanceTo(indexTip) < 1.5 || grabbedObject[index] === shape) {
-                        grabbedObject[index] = shape;
-                        shape.position.lerp(indexTip, 0.2); // Smoothly follow hand
+            if (pinchDist < 0.6) {
+                // FIRE BLAST EFFECT
+                h.dots.forEach(d => d.material.color.setHex(0xff4400));
+                document.getElementById('gesture-name').innerText = "POWER: FIRE_BLAST";
+                
+                // Explode logic: If pinching near object, reset it
+                shapes.forEach(s => {
+                    if(s.position.distanceTo(indexTip) < 1.5) {
+                        s.scale.set(0,0,0); // "Destroy" it
+                        setTimeout(() => { s.scale.set(1,1,1); spawnShapes(); }, 1000); // Respawn
+                    }
+                });
+            } else if (isFist) {
+                // GRAB LOGIC
+                h.dots.forEach(d => d.material.color.setHex(0x00ff88));
+                document.getElementById('gesture-name').innerText = "ACTION: GRABBING";
+                shapes.forEach(s => {
+                    if(s.position.distanceTo(indexTip) < 2 || grabbed[index] === s) {
+                        grabbed[index] = s;
+                        s.position.lerp(indexTip, 0.3);
                     }
                 });
             } else {
-                grabbedObject[index] = null;
+                h.dots.forEach(d => d.material.color.setHex(0x00f3ff));
+                grabbed[index] = null;
+                document.getElementById('gesture-name').innerText = "SCANNING...";
             }
         });
     }
+});
+
+async function sendToMediaPipe() {
+    if(!videoElement.paused) {
+        await hands.send({image: videoElement});
+    }
+    requestAnimationFrame(sendToMediaPipe);
 }
 
-// --- 6. INITIALIZE ---
-const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
-hands.setOptions({ maxNumHands: 2, minDetectionConfidence: 0.7 });
-hands.onResults(onResults);
-
-const cam = new Camera(document.querySelector('.input_video'), {
-    onFrame: async () => { await hands.send({image: document.querySelector('.input_video')}); },
-    width: 640, height: 480
-});
-cam.start();
+// Start everything
+startCamera();
 
 function animate() {
     requestAnimationFrame(animate);
-    shapes.forEach(s => { if(!grabbedObject.includes(s)) s.rotation.y += 0.01; });
+    shapes.forEach(s => { if(!grabbed.includes(s)) s.rotation.y += 0.02; });
     renderer.render(scene, camera);
 }
 animate();
+
+// Handle Resize
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
