@@ -1,12 +1,12 @@
-// --- 1. CORE 3D SCENE ---
+// --- 1. THREE.JS SCENE SETUP ---
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.getElementById('canvas-container').appendChild(renderer.domElement);
 
-// --- 2. THE PARTICLE SWARM ---
-const particleCount = 5000;
+// --- 2. THE PARTICLE SYSTEM ---
+const particleCount = 6000;
 const positions = new Float32Array(particleCount * 3);
 const velocities = new Float32Array(particleCount * 3);
 
@@ -17,95 +17,85 @@ for (let i = 0; i < particleCount * 3; i++) {
 
 const geo = new THREE.BufferGeometry();
 geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-
-const mat = new THREE.PointsMaterial({
-    color: 0x00f3ff,
-    size: 0.05,
-    transparent: true,
-    blending: THREE.AdditiveBlending
-});
-
+const mat = new THREE.PointsMaterial({ size: 0.04, transparent: true, blending: THREE.AdditiveBlending });
 const particles = new THREE.Points(geo, mat);
 scene.add(particles);
-camera.position.z = 5;
+camera.position.z = 6;
 
-// Pointer Target (This follows your hand)
 let target = new THREE.Vector3(0, 0, 0);
-let isPinching = false;
+let currentGesture = "VORTEX";
 
-// --- 3. ANIMATION LOOP (The Physics) ---
+// --- 3. PHYSICS ENGINE ---
 function animate() {
     requestAnimationFrame(animate);
-    
     const posAttr = geo.attributes.position;
+    
     for (let i = 0; i < particleCount; i++) {
         let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
-
-        // Vector from particle to hand
         let dx = target.x - posAttr.array[ix];
         let dy = target.y - posAttr.array[iy];
         let dz = target.z - posAttr.array[iz];
-        let dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+        let d = Math.sqrt(dx*dx + dy*dy + dz*dz) + 0.1;
 
-        if (isPinching) {
-            // EXPLOSION MODE
-            velocities[ix] -= dx / (dist * 10);
-            velocities[iy] -= dy / (dist * 10);
+        if (currentGesture === "SHOCKWAVE") {
+            velocities[ix] -= dx / (d * 5); velocities[iy] -= dy / (d * 5);
+            mat.color.setHex(0xff0055); // Neon Pink
+        } else if (currentGesture === "GRAVITY") {
+            velocities[ix] += dx / (d * 10); velocities[iy] += dy / (d * 10);
+            mat.color.setHex(0xffaa00); // Gold
         } else {
-            // SWARM MODE (Gravity toward hand)
-            velocities[ix] += dx / (dist * 500);
-            velocities[iy] += dy / (dist * 500);
-            velocities[iz] += dz / (dist * 500);
+            velocities[ix] += dx / (d * 200); velocities[iy] += dy / (d * 200);
+            mat.color.setHex(0x00f3ff); // Cyber Blue
         }
 
-        // Friction (slows them down so they don't fly away forever)
-        velocities[ix] *= 0.95;
-        velocities[iy] *= 0.95;
-        velocities[iz] *= 0.95;
-
-        // Update positions
-        posAttr.array[ix] += velocities[ix];
-        posAttr.array[iy] += velocities[iy];
-        posAttr.array[iz] += velocities[iz];
+        velocities[ix] *= 0.96; velocities[iy] *= 0.96;
+        posAttr.array[ix] += velocities[ix]; posAttr.array[iy] += velocities[iy];
     }
     posAttr.needsUpdate = true;
     renderer.render(scene, camera);
 }
 animate();
 
-// --- 4. AI HAND TRACKING ---
-const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
-hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+// --- 4. GESTURE LOGIC ---
+function getDist(p1, p2) { return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2)); }
 
-hands.onResults((results) => {
-    const canvasElement = document.querySelector('.output_canvas');
-    const canvasCtx = canvasElement.getContext('2d');
-    canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-    canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+function onResults(results) {
+    const canvas = document.querySelector('.output_canvas');
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
 
     if (results.multiHandLandmarks && results.multiHandLandmarks[0]) {
         const landmarks = results.multiHandLandmarks[0];
         
-        // Map 2D to 3D Space (Fixed Mirroring)
-        target.x = ((1 - landmarks[8].x) - 0.5) * 10;
-        target.y = ((1 - landmarks[8].y) - 0.5) * 8;
-        
-        // Pinch Detection
-        const dist = Math.sqrt(Math.pow(landmarks[8].x - landmarks[4].x, 2) + Math.pow(landmarks[8].y - landmarks[4].y, 2));
-        isPinching = dist < 0.05;
+        // DRAW SKELETON (The "Flex" Dots)
+        drawConnectors(ctx, landmarks, HAND_CONNECTIONS, {color: '#00f3ff', lineWidth: 2});
+        drawLandmarks(ctx, landmarks, {color: '#ffffff', lineWidth: 1, radius: 2});
 
+        // Map Position
+        target.x = ((1 - landmarks[8].x) - 0.5) * 12;
+        target.y = ((1 - landmarks[8].y) - 0.5) * 10;
+
+        // Detect Gestures
+        const pinch = getDist(landmarks[8], landmarks[4]);
+        const fist = getDist(landmarks[8], landmarks[0]) < 0.15;
+
+        if (pinch < 0.05) currentGesture = "SHOCKWAVE";
+        else if (fist) currentGesture = "GRAVITY";
+        else currentGesture = "VORTEX";
+
+        document.getElementById('gesture-name').innerText = currentGesture;
         document.getElementById('sync-val').innerText = "100%";
-        document.getElementById('gesture-name').innerText = isPinching ? "SHOCKWAVE_EMITTED" : "VORTEX_LOCKED";
-        mat.color.setHex(isPinching ? 0xff0055 : 0x00f3ff);
     } else {
         document.getElementById('sync-val').innerText = "0%";
-        document.getElementById('gesture-name').innerText = "LOST_SIGNAL";
     }
-});
+}
+
+// --- 5. INITIALIZE ---
+const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+hands.setOptions({ maxNumHands: 1, minDetectionConfidence: 0.7 });
+hands.onResults(onResults);
 
 const videoElement = document.querySelector('.input_video');
-const cameraDevice = new Camera(videoElement, {
-    onFrame: async () => { await hands.send({image: videoElement}); },
-    width: 640, height: 480
-});
-cameraDevice.start();
+const cam = new Camera(videoElement, { onFrame: async () => { await hands.send({image: videoElement}); }, width: 640, height: 480 });
+cam.start();
