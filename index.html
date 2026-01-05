@@ -3,21 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NEURAL_INTERFACE_ULTIMATE</title>
+    <title>SMART_NEURAL_CANVAS</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 </head>
 <body>
     <video class="input_video" playsinline></video>
-    <div id="interface-container">
-        <canvas id="ink_layer"></canvas>
-        <canvas id="ui_layer"></canvas>
-    </div>
+    <canvas id="ink_layer"></canvas>
+    <canvas id="ui_layer"></canvas>
 
-    <div class="system-status">
-        <div id="connection-line"></div>
-        <span>SYSTEM_ACTIVE // LATENCY: 12ms</span>
+    <div id="hud">
+        <div class="stat">BRUSH: <span id="size_val">10</span>px</div>
+        <div class="stat">COLOR: <span id="color_name" style="color:#00f3ff">CYAN</span></div>
+        <div id="mode_status">READY</div>
     </div>
 
     <script src="script.js"></script>
