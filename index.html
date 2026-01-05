@@ -3,23 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GHOST_HAND_v2.0</title>
+    <title>NEON_HUD_v1</title>
     <link rel="stylesheet" href="style.css">
-    
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
 </head>
 <body>
-    <div class="overlay">
-        <div class="header">NEURAL_LINK: ACTIVE</div>
-        <div id="gesture-name">SCANNING_SPACE...</div>
+
+    <div class="hud">
+        <div class="top-bar">
+            <span>SYSTEM: <b style="color:#0f0">ONLINE</b></span>
+            <span>CPU: <b id="cpu-stat">12%</b></span>
+            <span>MEM: <b id="mem-stat">408MB</b></span>
+        </div>
+        <div class="crosshair">+</div>
+        <div class="bottom-bar">
+            <span id="gesture-text">MODE: SCANNING...</span>
+            <span style="float:right">VER: 2.4.0</span>
+        </div>
     </div>
 
+    <canvas id="output_canvas"></canvas>
+    
     <video class="input_video" playsinline></video>
-    
-    <canvas class="output_canvas"></canvas>
-    
-    <div id="canvas-container"></div>
 
     <script src="script.js"></script>
 </body>

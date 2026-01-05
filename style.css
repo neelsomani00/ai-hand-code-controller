@@ -1,53 +1,53 @@
-body { 
-    margin: 0; 
-    background: radial-gradient(circle, #0a0a1a 0%, #000000 100%); 
-    overflow: hidden; 
-    font-family: 'Courier New', monospace; 
+body {
+    margin: 0;
+    background-color: #000;
+    color: #00ffcc;
+    font-family: 'Courier New', monospace;
+    overflow: hidden;
 }
 
-#canvas-container { 
-    position: absolute; 
-    top: 0; 
-    left: 0; 
-    width: 100%; 
-    height: 100%; 
-}
-
-.output_canvas {
+canvas {
     position: absolute;
-    bottom: 20px;
-    right: 20px;
-    width: 180px;
-    height: 135px;
-    border: 1px solid #00f3ff;
-    border-radius: 8px;
-    transform: scaleX(-1); /* Corrects mirror for preview */
-    opacity: 0.6;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    transform: scaleX(-1); /* Mirror effect */
+    z-index: 1;
+}
+
+.input_video { display: none; }
+
+/* HUD LAYOUT */
+.hud {
+    position: absolute;
+    top: 0; left: 0; width: 100%; height: 100%;
+    pointer-events: none; /* Let clicks pass through */
     z-index: 10;
+    background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+    background-size: 100% 2px, 3px 100%;
 }
 
-.input_video { 
-    display: none; 
+.top-bar, .bottom-bar {
+    position: absolute;
+    width: 90%;
+    left: 5%;
+    padding: 20px;
+    font-size: 18px;
+    font-weight: bold;
+    text-shadow: 0 0 5px #00ffcc;
+    border-bottom: 2px solid rgba(0, 255, 204, 0.3);
 }
 
-.overlay { 
-    position: absolute; 
-    top: 30px; 
-    left: 30px; 
-    color: #00f3ff; 
-    text-shadow: 0 0 10px #00f3ff; 
-    pointer-events: none;
-    z-index: 5;
+.top-bar { top: 20px; display: flex; justify-content: space-between; }
+.bottom-bar { bottom: 20px; border-bottom: none; border-top: 2px solid rgba(0, 255, 204, 0.3); }
+
+.crosshair {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    color: rgba(0, 255, 204, 0.2);
+    font-size: 50px;
 }
 
-.header { 
-    font-size: 1.2rem; 
-    font-weight: bold; 
-    letter-spacing: 2px;
-}
-
-#gesture-name { 
-    font-size: 0.9rem; 
-    margin-top: 10px; 
-    color: #ff0055; 
-}
+#gesture-text { color: #ff0055; text-shadow: 0 0 8px #ff0055; }
