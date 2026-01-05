@@ -1,23 +1,22 @@
-// --- 1. SETUP & CONFIG ---
-const videoElement = document.getElementsByClassName('input_video')[0];
-const inkCanvas = document.getElementById('ink_canvas');
-const cursorCanvas = document.getElementById('cursor_canvas');
+// --- CONFIGURATION ---
+const PINCH_START = 40;  // Must get this close to START drawing
+const PINCH_STOP = 80;   // Must get this far to STOP (Fixes the flickering!)
+const SMOOTHING = 0.5;   // Higher = smoother lines, slightly more lag
+
+const inkCanvas = document.getElementById('ink_layer');
+const cursorCanvas = document.getElementById('cursor_layer');
 const inkCtx = inkCanvas.getContext('2d');
 const cursorCtx = cursorCanvas.getContext('2d');
+const wrapper = document.getElementById('canvas-wrapper');
+const modeText = document.getElementById('active-mode');
+const colorPreview = document.getElementById('curColor');
 
-// UI Elements
-const colorPicker = document.getElementById('colorPicker');
-const sizeSlider = document.getElementById('sizeSlider');
-const sizeVal = document.getElementById('sizeVal');
-const zoomSlider = document.getElementById('zoomSlider');
-const zoomContainer = document.getElementById('zoom-container');
-const statusText = document.getElementById('hand-status');
+// State Variables
+let brush = { x: 0, y: 0, color: '#00f3ff', size: 6, isDrawing: false };
+let pan = { x: 0, y: 0 };
+let handState = { lastX: 0, lastY: 0, isPinching: false, lastColorSwap: 0 };
 
-let brushColor = '#00ffcc';
-let brushSize = 5;
-let isEraser = false;
-
-// Initialize Canvas Size
+// Setup Canvases
 function resize() {
     inkCanvas.width = window.innerWidth;
     inkCanvas.height = window.innerHeight;
@@ -27,112 +26,127 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
-// --- 2. UI CONTROLS ---
-colorPicker.addEventListener('input', (e) => {
-    brushColor = e.target.value;
-    isEraser = false;
-});
-
-sizeSlider.addEventListener('input', (e) => {
-    brushSize = e.target.value;
-    sizeVal.innerText = brushSize;
-});
-
-zoomSlider.addEventListener('input', (e) => {
-    zoomContainer.style.transform = `scale(${e.target.value})`;
-});
-
-window.setEraser = () => { isEraser = true; };
-window.clearAll = () => { inkCtx.clearRect(0, 0, inkCanvas.width, inkCanvas.height); };
-
-// --- 3. DRAWING LOGIC ---
-// We store the "previous" position of fingers to draw smooth lines
-let lastPositions = {}; 
-
+// --- THE LOGIC BRAIN ---
 function onResults(results) {
-    // Clear Cursor Layer ONLY (Keep the ink layer intact)
     cursorCtx.clearRect(0, 0, cursorCanvas.width, cursorCanvas.height);
+    
+    // Default Mode
+    let currentMode = "IDLE (HOVER)";
+    modeText.style.color = "#888";
 
-    if (results.multiHandLandmarks) {
-        statusText.innerText = "Hands Detected: " + results.multiHandLandmarks.length;
+    if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+        const lm = results.multiHandLandmarks[0];
+        
+        // Coordinates (Mirrored)
+        const W = cursorCanvas.width;
+        const H = cursorCanvas.height;
+        const indexTip = { x: lm[8].x * W, y: lm[8].y * H };
+        const thumbTip = { x: lm[4].x * W, y: lm[4].y * H };
+        const wrist = { x: lm[0].x * W, y: lm[0].y * H };
+        const pinkyTip = { x: lm[20].x * W, y: lm[20].y * H };
 
-        for (const [index, landmarks] of results.multiHandLandmarks.entries()) {
-            drawHand(landmarks, index);
+        // 1. GESTURE: FIST (PANNING)
+        // Logic: Index tip is close to Wrist
+        const fistDist = Math.hypot(indexTip.x - wrist.x, indexTip.y - wrist.y);
+        if (fistDist < 100) {
+            currentMode = "GRAB: PANNING";
+            modeText.style.color = "#ffaa00";
+            
+            // Move the entire canvas wrapper
+            const dx = indexTip.x - handState.lastX;
+            const dy = indexTip.y - handState.lastY;
+            
+            // Only move if not first frame of grab
+            if (handState.isPinching === false) { 
+                pan.x += dx; 
+                pan.y += dy;
+                wrapper.style.transform = `translate(${pan.x}px, ${pan.y}px)`;
+            }
+        } 
+        
+        // 2. GESTURE: COLOR SWAP (Index touching Pinky)
+        const colorDist = Math.hypot(indexTip.x - pinkyTip.x, indexTip.y - pinkyTip.y);
+        const now = Date.now();
+        if (colorDist < 40 && now - handState.lastColorSwap > 1000) {
+            // Random Neon Color
+            const colors = ['#00f3ff', '#00ff88', '#ff0055', '#ffff00', '#aa00ff'];
+            brush.color = colors[Math.floor(Math.random() * colors.length)];
+            colorPreview.style.backgroundColor = brush.color;
+            colorPreview.style.boxShadow = `0 0 15px ${brush.color}`;
+            handState.lastColorSwap = now;
         }
-    } else {
-        lastPositions = {}; // Reset if hands lost
+
+        // 3. GESTURE: DRAWING (Sticky Pinch)
+        const pinchDist = Math.hypot(indexTip.x - thumbTip.x, indexTip.y - thumbTip.y);
+        
+        // Hysteresis Logic (The Fix for broken lines)
+        if (pinchDist < PINCH_START) handState.isPinching = true;
+        else if (pinchDist > PINCH_STOP) handState.isPinching = false;
+
+        if (handState.isPinching && fistDist > 100) {
+            currentMode = "ACTIVE: DRAWING";
+            modeText.style.color = brush.color;
+
+            // Smooth Drawing (Quadratic Curve)
+            inkCtx.lineWidth = brush.size;
+            inkCtx.lineCap = 'round';
+            inkCtx.strokeStyle = brush.color;
+            inkCtx.shadowBlur = 10;
+            inkCtx.shadowColor = brush.color;
+
+            if (brush.isDrawing) {
+                inkCtx.beginPath();
+                inkCtx.moveTo(brush.x, brush.y);
+                // Draw smooth line to new point
+                inkCtx.quadraticCurveTo(brush.x, brush.y, indexTip.x, indexTip.y);
+                inkCtx.stroke();
+            }
+            
+            brush.isDrawing = true;
+            brush.x = indexTip.x;
+            brush.y = indexTip.y;
+        } else {
+            brush.isDrawing = false;
+        }
+
+        // Update visual cursor
+        drawCursor(indexTip.x, indexTip.y, handState.isPinching);
+        
+        // Save history for panning delta
+        handState.lastX = indexTip.x;
+        handState.lastY = indexTip.y;
+
+        // Draw Skeleton overlay
+        drawConnectors(cursorCtx, lm, HAND_CONNECTIONS, {color: 'rgba(255,255,255,0.1)', lineWidth: 1});
     }
+
+    modeText.innerText = currentMode;
 }
 
-function drawHand(landmarks, handIndex) {
-    // 1. Get Coordinates
-    const x = landmarks[8].x * cursorCanvas.width;
-    const y = landmarks[8].y * cursorCanvas.height;
-    
-    // Thumb for Pinch Detection
-    const thumbX = landmarks[4].x * cursorCanvas.width;
-    const thumbY = landmarks[4].y * cursorCanvas.height;
-
-    // 2. Draw Cursor (Visual Feedback)
+function drawCursor(x, y, active) {
     cursorCtx.beginPath();
-    cursorCtx.arc(x, y, brushSize / 2, 0, 2 * Math.PI);
+    cursorCtx.arc(x, y, active ? 5 : 10, 0, Math.PI * 2);
     cursorCtx.strokeStyle = "white";
     cursorCtx.lineWidth = 2;
     cursorCtx.stroke();
-    
-    // Draw Skeleton helper (optional, keeps it "techy")
-    drawConnectors(cursorCtx, landmarks, HAND_CONNECTIONS, {color: 'rgba(0, 255, 255, 0.3)', lineWidth: 1});
-
-    // 3. Check PINCH (Drawing Trigger)
-    const distance = Math.hypot(x - thumbX, y - thumbY);
-    const isPinching = distance < 50; // Threshold
-
-    if (isPinching) {
-        // DRAWING MODE
-        cursorCtx.fillStyle = isEraser ? 'red' : brushColor;
-        cursorCtx.fill(); // Fill cursor to show active state
-
-        if (lastPositions[handIndex]) {
-            inkCtx.beginPath();
-            inkCtx.moveTo(lastPositions[handIndex].x, lastPositions[handIndex].y);
-            inkCtx.lineTo(x, y);
-            
-            inkCtx.lineWidth = brushSize;
-            inkCtx.lineCap = 'round';
-            inkCtx.lineJoin = 'round';
-
-            if (isEraser) {
-                inkCtx.globalCompositeOperation = 'destination-out'; // Erase alpha
-            } else {
-                inkCtx.globalCompositeOperation = 'source-over'; // Normal draw
-                inkCtx.strokeStyle = brushColor;
-            }
-            
-            inkCtx.stroke();
-        }
-        // Update last position
-        lastPositions[handIndex] = { x, y };
-    } else {
-        // HOVER MODE (Lifted pen)
-        lastPositions[handIndex] = null; // Stop the line
+    if(active) {
+        cursorCtx.fillStyle = brush.color;
+        cursorCtx.fill();
     }
 }
 
-// --- 4. START MEDIAPIPE (LITE MODE FOR SPEED) ---
+window.clearCanvas = () => {
+    inkCtx.clearRect(0, 0, inkCanvas.width, inkCanvas.height);
+};
+
+// --- INITIALIZE ---
 const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
-
-// "modelComplexity: 0" is the secret to fixing the lag
-hands.setOptions({
-    maxNumHands: 2,
-    modelComplexity: 0, 
-    minDetectionConfidence: 0.5,
-    minTrackingConfidence: 0.5
-});
-
+hands.setOptions({ maxNumHands: 1, modelComplexity: 0, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
 hands.onResults(onResults);
 
-const camera = new Camera(videoElement, {
-    onFrame: async () => { await hands.send({image: videoElement}); },
+const vid = document.querySelector('.input_video');
+const camera = new Camera(vid, {
+    onFrame: async () => { await hands.send({image: vid}); },
     width: 1280, height: 720
 });
 camera.start();
