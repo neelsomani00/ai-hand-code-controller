@@ -3,29 +3,44 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NEON_HUD_v1</title>
+    <title>AIR_CANVAS_PRO</title>
     <link rel="stylesheet" href="style.css">
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 </head>
 <body>
 
-    <div class="hud">
-        <div class="top-bar">
-            <span>SYSTEM: <b style="color:#0f0">ONLINE</b></span>
-            <span>CPU: <b id="cpu-stat">12%</b></span>
-            <span>MEM: <b id="mem-stat">408MB</b></span>
+    <div id="zoom-container">
+        <video class="input_video" playsinline></video>
+        <canvas id="ink_canvas"></canvas>
+        <canvas id="cursor_canvas"></canvas>
+    </div>
+
+    <div class="toolbar">
+        <div class="tool-group">
+            <label>Color</label>
+            <input type="color" id="colorPicker" value="#00ffcc">
         </div>
-        <div class="crosshair">+</div>
-        <div class="bottom-bar">
-            <span id="gesture-text">MODE: SCANNING...</span>
-            <span style="float:right">VER: 2.4.0</span>
+        
+        <div class="tool-group">
+            <label>Size: <span id="sizeVal">5</span></label>
+            <input type="range" id="sizeSlider" min="1" max="50" value="5">
+        </div>
+
+        <button onclick="setEraser()" class="btn">🧽 Eraser</button>
+        <button onclick="clearAll()" class="btn btn-danger">🗑️ Clear All</button>
+
+        <div class="tool-group">
+            <label>Zoom</label>
+            <input type="range" id="zoomSlider" min="1" max="3" step="0.1" value="1">
         </div>
     </div>
 
-    <canvas id="output_canvas"></canvas>
-    
-    <video class="input_video" playsinline></video>
+    <div class="status">
+        <span id="hand-status">System Ready</span>
+    </div>
 
     <script src="script.js"></script>
 </body>
