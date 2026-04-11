@@ -11,8 +11,8 @@ const modeText = document.getElementById('mode_status');
 // Global Settings
 let brush = { color: '#00f3ff', size: 10, isDrawing: false, lastX: 0, lastY: 0 };
 const colors = [
-    { name: 'CYAN', hex: '#00f3ff' }, { name: 'MAGENTA', hex: '#ff0055' }, 
-    { name: 'LIME', hex: '#00ff88' }, { name: 'GOLD', hex: '#ffff00' }, { name: 'WHITE', hex: '#ffffff' }
+    { name: 'BLUE', hex: '#00f3ff' }, { name: 'RED', hex: '#ff0055' }, { name: 'BLACK', hex: '#000000' },
+    { name: 'GREEN', hex: '#00ff88' }, { name: 'YELLOW', hex: '#ffff00' }, { name: 'WHITE', hex: '#ffffff' }
 ];
 let colorIdx = 0;
 
